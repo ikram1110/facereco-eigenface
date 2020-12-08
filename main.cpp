@@ -537,7 +537,7 @@ void calculate_accuracy() {
 		}
 	}
 	
-	std::cout << "Akurasi : " << accuracy / N << std::endl;
+	std::cout << "Accuracy : " << accuracy / N << std::endl;
 	
 	free(Wx);
 	free(Xtrans);
@@ -558,7 +558,7 @@ int main(int argc, char *argv[]) {
 	t = clock();
 	read_training_data();
 	t = clock() - t;
-	printf("Waktu proses baca data latih : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	printf("Execution time read training data : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// B berisi citra rata-rata. B adalah matriks 1xM, [B] 0, j adalah nilai piksel ke-j dari citra rata-rata.
 	B = (double**) malloc(1*sizeof(double*));
@@ -570,12 +570,12 @@ int main(int argc, char *argv[]) {
 	t = clock();
 	create_mean_image();
 	t = clock() - t;
-	printf("Waktu proses pembuatan citra rata-rata : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	printf("Execution time create mean image : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	t = clock();
 	normalized();
 	t = clock() - t;
-	printf("Waktu proses normalisasi citra : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	printf("Execution time normalized : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// transpose matriks A
 	Atrans = (double**) malloc(M*sizeof(double*));
@@ -586,7 +586,7 @@ int main(int argc, char *argv[]) {
 	t = clock();
 	transpose_matrixA();
 	t = clock() - t;
-	printf("Waktu proses transpose matriks A : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	printf("Execution time transpose matrix A : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// matriks covarian [A * Atranspose]
 	// S -> M*M
@@ -616,13 +616,13 @@ int main(int argc, char *argv[]) {
 	// openmp
 	get_covariant_matrix_omp();
 	t = clock() - t;
-	printf("Waktu proses kovarian matriks (perkalian matriks A dgn transposenya) : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	printf("Execution time get covariant matrix (Multiply the matriks A and its transpose) : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	t = clock();
 	calculate_eigenvalues();
 	free(tempS);
 	t = clock() - t;
-	printf("Waktu proses menemukan eigenvalues : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	printf("Execution time get eigenvalues : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// temukan eigenface
 	U = (double**) malloc(Eigenfaces*sizeof(double*));
@@ -634,7 +634,7 @@ int main(int argc, char *argv[]) {
 	t = clock();
 	calculate_eigenfaces();
 	t = clock() - t;
-	printf("Waktu proses menemukan eigenfaces : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	printf("Execution time get eigenfaces : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// temukan bobot
 	W = (double**) malloc(Eigenfaces*sizeof(double*));
@@ -646,7 +646,7 @@ int main(int argc, char *argv[]) {
 	t = clock();
 	calculate_weight();
 	t = clock() - t;
-	printf("Waktu proses menemukan bobot : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	printf("Execution time get weight : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// menghitung akurasi
 	X = (double**) malloc(1*sizeof(double*));
@@ -658,9 +658,9 @@ int main(int argc, char *argv[]) {
 	t = clock();
 	calculate_accuracy();
 	t = clock() - t;
-	printf("Waktu proses menghitung akurasi : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	printf("Execution time get accuracy : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	first = clock() - first;
-	printf("Waktu proses keseluruhan : %.2fms\n", (float)(first)/CLOCKS_PER_SEC*1000);
+	printf("Total Execution time : %.2fms\n", (float)(first)/CLOCKS_PER_SEC*1000);
 	
 	free(X);
 	free(A);
