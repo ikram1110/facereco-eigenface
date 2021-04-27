@@ -19,9 +19,24 @@ $ g++ -Wall -std=c++11 static.cpp -fopenmp -o static
 $ g++ -Wall -std=c++11 dynamic.cpp -fopenmp -o dynamic
 $ g++ -Wall -std=c++11 guided.cpp -fopenmp -o guided
 ```
-And run it
+
+Then run it for serial program
 ```bash
 $ ./serial
+```
+
+for parallel program
+```bash
+$ ./parallel
+```
+
+and with schedule method with command
+```bash
+$ ./scheduleApp [numberOfThread]
+```
+like ...
+```bash
+$ ./static 4
 ```
 
 ## Usage
