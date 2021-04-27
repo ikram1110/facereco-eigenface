@@ -6,14 +6,22 @@ Implementation of load imbalance in face recognition case studies with the eigen
 
 ## Installation
 
-Use the OpenMP Library to compile the program with `-fopenmp` option
+For serial program with commands
+```bash
+$ g++ -Wall -std=c++11 main.cpp -o serial
+```
+
+And parallel program, use the OpenMP Library to compile the program with `-fopenmp` option
 
 ```bash
-$ g++ -Wall -std=c++11 main.cpp -fopenmp -o eigenface
+$ g++ -Wall -std=c++11 parallel.cpp -fopenmp -o parallel
+$ g++ -Wall -std=c++11 static.cpp -fopenmp -o static
+$ g++ -Wall -std=c++11 dynamic.cpp -fopenmp -o dynamic
+$ g++ -Wall -std=c++11 guided.cpp -fopenmp -o guided
 ```
 And run it
 ```bash
-$ ./eigenface
+$ ./serial
 ```
 
 ## Usage
@@ -46,14 +54,10 @@ With this configuration, the program will train itself on 360 photos located in 
 ## Output
 The output of the program for the previously discussed configuration is:
 ```bash
-Execution time read training data : 3783.32ms
 Execution time create mean image : 31.90ms
-Execution time normalized : 376.91ms
-Execution time transpose matrix A : 26.12ms
-Execution time get covariant matrix (Multiply the matriks A and its transpose) : 3650.40ms
+Execution time mean subtraction : 376.91ms
+Execution time get covariant matrix : 3650.40ms
 Execution time get eigenvalues : 100.80ms
-Execution time get eigenfaces : 1519.54ms
-Execution time get weight : 1434.72ms
 1. 1
 2. 2
 3. 3
@@ -94,9 +98,7 @@ Execution time get weight : 1434.72ms
 38. 38
 39. 22
 40. 5
-Accuracy : 0.9
-Execution time get accuracy : 2034.96ms
-Total Execution time : 13024.75ms
+Accuracy : 1.00
 
 ```
 The execution time shows the processing time step by step in the eigenface algorithm.

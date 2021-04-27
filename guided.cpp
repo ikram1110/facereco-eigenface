@@ -72,7 +72,7 @@ void read_training_data() {
 void create_mean_image() {
 	// temukan mean image
 	tsc = clock();
-	#pragma omp parallel for schedule(dynamic, 8)
+	#pragma omp parallel for schedule(guided)
 	for(int c=0; c<M; ++c) {
 		double sum = 0;
 		for(int r=0; r<N; ++r) {
@@ -101,7 +101,7 @@ void create_mean_image() {
 void normalized() {
 	// kurangkan mean dari setiap gambar
 	tsc = clock();
-	#pragma omp parallel for schedule(dynamic, 8)
+	#pragma omp parallel for schedule(guided)
 	for(int r=0; r<N; ++r) {
 		for(int c=0; c<M; ++c) {
 			A[r][c] -= B[0][c];
@@ -140,10 +140,7 @@ void transpose_matrixA() {
 
 void get_covariant_matrix() {
 	int cl, kl;
-	#pragma omp parallel for private(cl,kl) schedule(dynamic, 8)
-	// #pragma omp parallel for private(cl,kl)
-	// #pragma omp parallel for schedule(dynamic, 8)
-	// #pragma omp parallel for schedule(dynamic, 8) private(cl,kl)
+	#pragma omp parallel for private(cl,kl) schedule(guided)
 	for(int r=0; r<N; ++r) {
 		for(cl=0; cl<N; ++cl) {
 			S[r][cl] = 0;
@@ -195,7 +192,7 @@ void calculate_eigenvalues() {
 				eigenvalues[i] = tempS[i][i];
 			}
 			// normalisasi P
-			#pragma omp parallel for schedule(dynamic, 8)
+			#pragma omp parallel for schedule(guided)
 			for(int c=0; c<N; ++c) {
 				double length = 0;
 				for(int r=0; r<N; ++r) {
@@ -518,14 +515,15 @@ void calculate_accuracy() {
 }
 
 int main(int argc, char *argv[]) {
-	// if(argc == 2){
-  //   Eigenfaces = atoi(argv[1]);
-  // }
+	int thread = 2;
+	if(argc == 2){
+    thread = atoi(argv[1]);
+  }
 
 	srand(time(NULL));
 	first = clock();
 
-	omp_set_num_threads(8);
+	omp_set_num_threads(thread);
 	
 	// A berisi gambar sebagai baris. A adalah NxM, [A] i, j adalah nilai piksel ke-j gambar ke-i.
 	A = (double**) malloc(N*sizeof(double*));
@@ -535,10 +533,10 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// baca data latih
-	t = clock();
+	// t = clock();
 	read_training_data();
-	t = clock() - t;
-	printf("Execution time read training data : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time read training data : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// B berisi citra rata-rata. B adalah matriks 1xM, [B] 0, j adalah nilai piksel ke-j dari citra rata-rata.
 	B = (double**) malloc(1*sizeof(double*));
@@ -547,15 +545,15 @@ int main(int argc, char *argv[]) {
 		memset(B[x],0,M*sizeof(double));
 	}
 	
-	t = clock();
+	// t = clock();
 	create_mean_image();
-	t = clock() - t;
-	printf("Execution time create mean image : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time create mean image : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
-	t = clock();
+	// t = clock();
 	normalized();
-	t = clock() - t;
-	printf("Execution time normalized : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time normalized : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// transpose matriks A
 	Atrans = (double**) malloc(M*sizeof(double*));
@@ -563,10 +561,10 @@ int main(int argc, char *argv[]) {
 		Atrans[x] = (double*) malloc(N*sizeof(double));
 		memset(Atrans[x],0,N*sizeof(double));
 	}
-	t = clock();
+	// t = clock();
 	transpose_matrixA();
-	t = clock() - t;
-	printf("Execution time transpose matrix A : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time transpose matrix A : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// matriks covarian [A * Atranspose]
 	// S -> M*M
@@ -590,7 +588,7 @@ int main(int argc, char *argv[]) {
 	// serial
 	get_covariant_matrix();
 	t = clock() - t;
-	printf("Execution time get covariant matrix (Multiply the matriks A and its transpose) : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	printf("Execution time get covariant matrix : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	t = clock();
 	calculate_eigenvalues();
@@ -605,10 +603,10 @@ int main(int argc, char *argv[]) {
 		memset(U[x],0,M*sizeof(double));
 	}
 	
-	t = clock();
+	// t = clock();
 	calculate_eigenfaces();
-	t = clock() - t;
-	printf("Execution time get eigenfaces : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time get eigenfaces : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// temukan bobot
 	W = (double**) malloc(Eigenfaces*sizeof(double*));
@@ -617,10 +615,10 @@ int main(int argc, char *argv[]) {
 		memset(W[x],0,N*sizeof(double));
 	}
 	
-	t = clock();
+	// t = clock();
 	calculate_weight();
-	t = clock() - t;
-	printf("Execution time get weight : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time get weight : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// menghitung akurasi
 	X = (double**) malloc(1*sizeof(double*));
@@ -629,12 +627,12 @@ int main(int argc, char *argv[]) {
 		memset(X[x],0,M*sizeof(double));
 	}
 	
-	t = clock();
+	// t = clock();
 	calculate_accuracy();
-	t = clock() - t;
-	printf("Execution time get accuracy : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
-	first = clock() - first;
-	printf("Total Execution time : %.2fms\n", (float)(first)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time get accuracy : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// first = clock() - first;
+	// printf("Total Execution time : %.2fms\n", (float)(first)/CLOCKS_PER_SEC*1000);
 	
 	free(X);
 	free(A);

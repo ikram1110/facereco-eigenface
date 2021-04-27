@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <algorithm>
+#include <omp.h>
 #include <time.h>
 
 const int Faces = 40;
@@ -71,6 +72,7 @@ void read_training_data() {
 void create_mean_image() {
 	// temukan mean image
 	tsc = clock();
+	#pragma omp parallel for schedule(static)
 	for(int c=0; c<M; ++c) {
 		double sum = 0;
 		for(int r=0; r<N; ++r) {
@@ -99,6 +101,7 @@ void create_mean_image() {
 void normalized() {
 	// kurangkan mean dari setiap gambar
 	tsc = clock();
+	#pragma omp parallel for schedule(static)
 	for(int r=0; r<N; ++r) {
 		for(int c=0; c<M; ++c) {
 			A[r][c] -= B[0][c];
@@ -136,38 +139,13 @@ void transpose_matrixA() {
 }
 
 void get_covariant_matrix() {
+	int cl, kl;
+	#pragma omp parallel for private(cl,kl) schedule(static)
 	for(int r=0; r<N; ++r) {
-		for(int c=0; c<N; ++c) {
-			S[r][c] = 0;
-			for(int k=0; k<M; ++k) {
-				S[r][c] += A[r][k] * Atrans[k][c];
-			}
-		}
-	}
-}
-
-
-void get_covariant_matrix_tiling() {
-	const int size = 4;
-	int tmp[size][size];
-	for(int r=0; r<N; r+=size) {
-		for(int c=0; c<N; c+=size) {
-			for(int rt=0; rt<size; rt++) {
-				for(int ct=0; ct<size; ct++) {
-					tmp[rt][ct] = 0;
-				}
-			}
-			for(int k=0; k<M; k++) {
-				for(int rt=0; rt<size; rt++) {
-					for(int ct=0; ct<size; ct++) {
-						tmp[rt][ct] += A[r+rt][k] * Atrans[k][c+ct];
-					}
-				}
-			}
-			for(int rt=0; rt<size; rt++) {
-				for(int ct=0; ct<size; ct++) {
-					S[r+rt][c+ct] = tmp[rt][ct];
-				}
+		for(cl=0; cl<N; ++cl) {
+			S[r][cl] = 0;
+			for(kl=0; kl<M; ++kl) {
+				S[r][cl] += A[r][kl] * Atrans[kl][cl];
 			}
 		}
 	}
@@ -214,6 +192,7 @@ void calculate_eigenvalues() {
 				eigenvalues[i] = tempS[i][i];
 			}
 			// normalisasi P
+			#pragma omp parallel for schedule(static)
 			for(int c=0; c<N; ++c) {
 				double length = 0;
 				for(int r=0; r<N; ++r) {
@@ -536,12 +515,15 @@ void calculate_accuracy() {
 }
 
 int main(int argc, char *argv[]) {
-	// if(argc == 2){
-  //   Eigenfaces = atoi(argv[1]);
-  // }
+	int thread = 2;
+	if(argc == 2){
+    thread = atoi(argv[1]);
+  }
 
 	srand(time(NULL));
 	first = clock();
+
+	omp_set_num_threads(thread);
 	
 	// A berisi gambar sebagai baris. A adalah NxM, [A] i, j adalah nilai piksel ke-j gambar ke-i.
 	A = (double**) malloc(N*sizeof(double*));
@@ -605,9 +587,6 @@ int main(int argc, char *argv[]) {
 	t = clock();
 	// serial
 	get_covariant_matrix();
-
-	// tiling
-	// get_covariant_matrix_tiling();
 	t = clock() - t;
 	printf("Execution time get covariant matrix : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
