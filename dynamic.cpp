@@ -9,12 +9,13 @@
 #include <omp.h>
 #include <time.h>
 
+#define MIN(a,b) (((a)<(b))?(a):(b))
 const int Faces = 40;
 const int Samples = 9;
-const int Width = 92;
-const int Height = 112;
+const int Width = 296;
+const int Height = 360;
 const int Eigenfaces = 28;
-const std::string DataPath = "faces/";
+const std::string DataPath = "face360/";
 const int N = Faces;
 const int M = Width * Height;
 const std::string SampleName = "10";
@@ -32,7 +33,8 @@ void read_training_data() {
 		// perulangan setiap foto
 		for(int sample=0; sample<Samples; ++sample) {
 			std::stringstream filename;
-			filename << DataPath << "s" << face + 1 << "/" << sample  + 1 << ".pgm";
+			// filename << DataPath << "s" << face + 1 << "/" << sample  + 1 << ".pgm";
+			filename << DataPath << face + 1 << "_" << sample  + 1 << ".pgm";
 			std::ifstream image(filename.str().c_str());
 
 			if (image.is_open()) {
@@ -146,6 +148,26 @@ void get_covariant_matrix() {
 			S[r][cl] = 0;
 			for(kl=0; kl<M; ++kl) {
 				S[r][cl] += A[r][kl] * Atrans[kl][cl];
+			}
+		}
+	}
+}
+
+void get_covariant_matrix_tile(int size, int chunk) {
+	int jj,kk,i,j,k,sum;
+	#pragma omp parallel for private(jj,kk,i,j,k,sum) schedule(dynamic, chunk)
+	for (int ii = 0; ii<N; ii+=size) {
+		for (jj = 0; jj<N; jj+=size) {
+	    for(kk = 0; kk<M; kk+=size) {
+				for (i = ii; i < MIN(ii+size,N); i++) {
+					for (j = jj; j < MIN(jj+size,N); j++) {
+		  			sum = 0;
+						for (k = kk; k < MIN(kk+size,M); k++) {
+							sum += A[i][k] * Atrans[k][j];
+						}
+		  			S[i][j]+= sum;
+					}
+				}
 			}
 		}
 	}
@@ -435,7 +457,8 @@ void calculate_accuracy() {
 	for(int i=1; i<=N; ++i) {
 		// baca sample gambar
 		std::stringstream filesample;
-		filesample << DataPath << "s" << i << "/" << SampleName << ".pgm";
+		// filesample << DataPath << "s" << i << "/" << SampleName << ".pgm";
+		filesample << DataPath << i << "_" << SampleName << ".pgm";
 		std::ifstream imagesample(filesample.str().c_str());
 		
 		if (imagesample.is_open()) {
@@ -502,7 +525,7 @@ void calculate_accuracy() {
 			}
 		}
         
-		std::cout << i << ". " << image_number + 1 << std::endl;
+		// std::cout << i << ". " << image_number + 1 << std::endl;
 		if(i == image_number + 1) {
 			accuracy = accuracy + 1;
 		}
@@ -516,9 +539,16 @@ void calculate_accuracy() {
 
 int main(int argc, char *argv[]) {
 	int thread = 2;
-	if(argc == 2){
+	int size = 20;
+	int chunk_size = 1;
+	if(argc <= 4){
     thread = atoi(argv[1]);
+    size = atoi(argv[2]);
+    chunk_size = atoi(argv[3]);
   }
+	printf("Thread: %d\n", thread);
+	printf("Size: %d\n", size);
+	printf("ChunkSize: %d\n", chunk_size);
 
 	srand(time(NULL));
 	first = clock();
@@ -586,7 +616,8 @@ int main(int argc, char *argv[]) {
 	
 	t = clock();
 	// serial
-	get_covariant_matrix();
+	// get_covariant_matrix();
+	get_covariant_matrix_tile(size, chunk_size);
 	t = clock() - t;
 	printf("Execution time get covariant matrix : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	

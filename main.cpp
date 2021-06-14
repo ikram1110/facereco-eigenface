@@ -10,10 +10,10 @@
 
 const int Faces = 40;
 const int Samples = 9;
-const int Width = 92;
-const int Height = 112;
-const int Eigenfaces = 28;
-const std::string DataPath = "faces/";
+const int Width = 460;
+const int Height = 560;
+int Eigenfaces = 28;
+const std::string DataPath = "faces460/";
 const int N = Faces;
 const int M = Width * Height;
 const std::string SampleName = "10";
@@ -31,7 +31,8 @@ void read_training_data() {
 		// perulangan setiap foto
 		for(int sample=0; sample<Samples; ++sample) {
 			std::stringstream filename;
-			filename << DataPath << "s" << face + 1 << "/" << sample  + 1 << ".pgm";
+			// filename << DataPath << "s" << face + 1 << "/" << sample  + 1 << ".pgm";
+			filename << DataPath << face + 1 << "/" << sample  + 1 << ".pgm";
 			std::ifstream image(filename.str().c_str());
 
 			if (image.is_open()) {
@@ -456,7 +457,8 @@ void calculate_accuracy() {
 	for(int i=1; i<=N; ++i) {
 		// baca sample gambar
 		std::stringstream filesample;
-		filesample << DataPath << "s" << i << "/" << SampleName << ".pgm";
+		// filesample << DataPath << "s" << i << "/" << SampleName << ".pgm";
+		filesample << DataPath << i << "/" << SampleName << ".pgm";
 		std::ifstream imagesample(filesample.str().c_str());
 		
 		if (imagesample.is_open()) {
@@ -523,7 +525,7 @@ void calculate_accuracy() {
 			}
 		}
         
-		std::cout << i << ". " << image_number + 1 << std::endl;
+		// std::cout << i << ". " << image_number + 1 << std::endl;
 		if(i == image_number + 1) {
 			accuracy = accuracy + 1;
 		}
@@ -536,9 +538,9 @@ void calculate_accuracy() {
 }
 
 int main(int argc, char *argv[]) {
-	// if(argc == 2){
-  //   Eigenfaces = atoi(argv[1]);
-  // }
+	if(argc == 2){
+    Eigenfaces = atoi(argv[1]);
+  }
 
 	srand(time(NULL));
 	first = clock();
