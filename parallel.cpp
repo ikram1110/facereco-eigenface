@@ -9,6 +9,7 @@
 #include <omp.h>
 #include <time.h>
 
+#define MIN(a,b) (((a)<(b))?(a):(b))
 const int Faces = 40;
 const int Samples = 9;
 const int Width = 92;
@@ -32,7 +33,8 @@ void read_training_data() {
 		// perulangan setiap foto
 		for(int sample=0; sample<Samples; ++sample) {
 			std::stringstream filename;
-			filename << DataPath << "s" << face + 1 << "/" << sample  + 1 << ".pgm";
+			// filename << DataPath << "s" << face + 1 << "/" << sample  + 1 << ".pgm";
+			filename << DataPath << face + 1 << "_" << sample  + 1 << ".pgm";
 			std::ifstream image(filename.str().c_str());
 
 			if (image.is_open()) {
@@ -47,7 +49,7 @@ void read_training_data() {
 				int val;
 				int x = 0;
 				while(image >> val) {
-				facearray[sample][x] = val;
+					facearray[sample][x] = val;
 					x++;
 				}
 				
@@ -72,7 +74,7 @@ void read_training_data() {
 void create_mean_image() {
 	// temukan mean image
 	tsc = clock();
-	#pragma omp parallel for
+	#pragma omp parallel for schedule(dynamic)
 	for(int c=0; c<M; ++c) {
 		double sum = 0;
 		for(int r=0; r<N; ++r) {
@@ -101,7 +103,7 @@ void create_mean_image() {
 void normalized() {
 	// kurangkan mean dari setiap gambar
 	tsc = clock();
-	#pragma omp parallel for
+	#pragma omp parallel for schedule(dynamic)
 	for(int r=0; r<N; ++r) {
 		for(int c=0; c<M; ++c) {
 			A[r][c] -= B[0][c];
@@ -140,15 +142,148 @@ void transpose_matrixA() {
 
 void get_covariant_matrix() {
 	int cl, kl;
-	#pragma omp parallel for private(cl,kl)
-	// #pragma omp parallel for private(cl,kl)
-	// #pragma omp parallel for schedule(dynamic, 8)
-	// #pragma omp parallel for schedule(dynamic, 8) private(cl,kl)
+	#pragma omp parallel for private(cl,kl) schedule(dynamic)
 	for(int r=0; r<N; ++r) {
 		for(cl=0; cl<N; ++cl) {
 			S[r][cl] = 0;
 			for(kl=0; kl<M; ++kl) {
 				S[r][cl] += A[r][kl] * Atrans[kl][cl];
+			}
+		}
+	}
+}
+
+void get_covariant_matrix_tile_static(int size, int chunk) {
+	int jj,kk,i,j,k,sum;
+	#pragma omp parallel for private(jj,kk,i,j,k,sum) schedule(static, chunk)
+	for (int ii = 0; ii<N; ii+=size) {
+		for (jj = 0; jj<N; jj+=size) {
+	    for(kk = 0; kk<M; kk+=size) {
+				for (i = ii; i < MIN(ii+size,N); i++) {
+					for (j = jj; j < MIN(jj+size,N); j++) {
+		  			sum = 0;
+						for (k = kk; k < MIN(kk+size,M); k++) {
+							sum += A[i][k] * Atrans[k][j];
+						}
+		  			S[i][j]+= sum;
+					}
+				}
+			}
+		}
+	}
+}
+
+void get_covariant_matrix_tile_guided(int size, int chunk) {
+	int jj,kk,i,j,k,sum;
+	#pragma omp parallel for private(jj,kk,i,j,k,sum) schedule(guided, chunk)
+	for (int ii = 0; ii<N; ii+=size) {
+		for (jj = 0; jj<N; jj+=size) {
+	    for(kk = 0; kk<M; kk+=size) {
+				for (i = ii; i < MIN(ii+size,N); i++) {
+					for (j = jj; j < MIN(jj+size,N); j++) {
+		  			sum = 0;
+						for (k = kk; k < MIN(kk+size,M); k++) {
+							sum += A[i][k] * Atrans[k][j];
+						}
+		  			S[i][j]+= sum;
+					}
+				}
+			}
+		}
+	}
+}
+
+void get_covariant_matrix_tile_dynamic(int size, int chunk) {
+	int jj,kk,i,j,k,sum;
+	#pragma omp parallel for private(jj,kk,i,j,k,sum) schedule(dynamic, chunk)
+	for (int ii = 0; ii<N; ii+=size) {
+		for (jj = 0; jj<N; jj+=size) {
+	    for(kk = 0; kk<M; kk+=size) {
+				for (i = ii; i < MIN(ii+size,N); i++) {
+					for (j = jj; j < MIN(jj+size,N); j++) {
+		  			sum = 0;
+						for (k = kk; k < MIN(kk+size,M); k++) {
+							sum += A[i][k] * Atrans[k][j];
+						}
+		  			S[i][j]+= sum;
+					}
+				}
+			}
+		}
+	}
+}
+
+void processTask(int xx, int yy, int zz, int size){
+	int sum;
+	for (int x = xx; x < MIN(xx+size,N); x++) {
+		for (int y = yy; y < MIN(yy+size,N); y++) {
+			sum = 0;
+			for (int z = zz; z < MIN(zz+size,M); z++) {
+				sum += A[x][z] * Atrans[z][y];
+			}
+			S[x][y]+= sum;
+		}
+	}
+}
+
+void get_covariant_matrix_task(int size, int chunk) {
+	int ii,jj,kk;
+	#pragma omp parallel
+	{
+		#pragma omp single nowait
+		for (ii = 0; ii<N; ii+=size) {
+			for (jj = 0; jj<N; jj+=size) {
+				for(kk = 0; kk<M; kk+=size) {
+					#pragma omp task firstprivate(ii,jj,kk)
+					processTask(ii, jj, kk, size);
+				}
+			}
+		}
+	}
+}
+
+void processDataTask(int xx, int yy, int zz, int size, int chunk){
+	int x,y,z,sum;
+	#pragma omp parallel for private(x,y,z,sum) schedule(dynamic, chunk)
+	for (x = xx; x < MIN(xx+size,N); x++) {
+		for (y = yy; y < MIN(yy+size,N); y++) {
+			sum = 0;
+			for (z = zz; z < MIN(zz+size,M); z++) {
+				sum += A[x][z] * Atrans[z][y];
+			}
+			S[x][y]+= sum;
+		}
+	}
+}
+
+void get_covariant_matrix_data_task(int size, int chunk) {
+	int ii,jj,kk;
+	#pragma omp parallel
+	{
+		#pragma omp single nowait
+		for (ii = 0; ii<N; ii+=size) {
+			for (jj = 0; jj<N; jj+=size) {
+				for(kk = 0; kk<M; kk+=size) {
+					#pragma omp task firstprivate(ii,jj,kk)
+					processDataTask(ii, jj, kk, size, chunk);
+				}
+			}
+		}
+	}
+}
+
+void get_covariant_matrix_task_depend(int size, int chunk) {
+	int ii,jj,kk;
+	#pragma omp parallel
+	{
+		#pragma omp single nowait
+		for (ii = 0; ii<N; ii+=size) {
+			for (jj = 0; jj<N; jj+=size) {
+				for(kk = 0; kk<M; kk+=size) {
+					#pragma omp task depend(in   : ii,jj,kk) \
+					                 depend(inout: ii,jj,kk)
+					processDataTask(ii, jj, kk, size, chunk);
+				}
 			}
 		}
 	}
@@ -195,7 +330,7 @@ void calculate_eigenvalues() {
 				eigenvalues[i] = tempS[i][i];
 			}
 			// normalisasi P
-			#pragma omp parallel for
+			#pragma omp parallel for schedule(dynamic)
 			for(int c=0; c<N; ++c) {
 				double length = 0;
 				for(int r=0; r<N; ++r) {
@@ -438,7 +573,8 @@ void calculate_accuracy() {
 	for(int i=1; i<=N; ++i) {
 		// baca sample gambar
 		std::stringstream filesample;
-		filesample << DataPath << "s" << i << "/" << SampleName << ".pgm";
+		// filesample << DataPath << "s" << i << "/" << SampleName << ".pgm";
+		filesample << DataPath << i << "_" << SampleName << ".pgm";
 		std::ifstream imagesample(filesample.str().c_str());
 		
 		if (imagesample.is_open()) {
@@ -505,7 +641,7 @@ void calculate_accuracy() {
 			}
 		}
         
-		std::cout << i << ". " << image_number + 1 << std::endl;
+		// std::cout << i << ". " << image_number + 1 << std::endl;
 		if(i == image_number + 1) {
 			accuracy = accuracy + 1;
 		}
@@ -518,14 +654,22 @@ void calculate_accuracy() {
 }
 
 int main(int argc, char *argv[]) {
-	// if(argc == 2){
-  //   Eigenfaces = atoi(argv[1]);
+	int thread = 4;
+	int size = 20;
+	int chunk_size = 8;
+	// if(argc <= 4){
+  //   thread = atoi(argv[1]);
+  //   size = atoi(argv[2]);
+  //   chunk_size = atoi(argv[3]);
   // }
+	// printf("Thread: %d\n", thread);
+	// printf("Size: %d\n", size);
+	// printf("ChunkSize: %d\n", chunk_size);
 
 	srand(time(NULL));
 	first = clock();
 
-	omp_set_num_threads(8);
+	omp_set_num_threads(thread);
 	
 	// A berisi gambar sebagai baris. A adalah NxM, [A] i, j adalah nilai piksel ke-j gambar ke-i.
 	A = (double**) malloc(N*sizeof(double*));
@@ -535,10 +679,10 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// baca data latih
-	t = clock();
+	// t = clock();
 	read_training_data();
-	t = clock() - t;
-	printf("Execution time read training data : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time read training data : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// B berisi citra rata-rata. B adalah matriks 1xM, [B] 0, j adalah nilai piksel ke-j dari citra rata-rata.
 	B = (double**) malloc(1*sizeof(double*));
@@ -547,15 +691,15 @@ int main(int argc, char *argv[]) {
 		memset(B[x],0,M*sizeof(double));
 	}
 	
-	t = clock();
+	// t = clock();
 	create_mean_image();
-	t = clock() - t;
-	printf("Execution time create mean image : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time create mean image : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
-	t = clock();
+	// t = clock();
 	normalized();
-	t = clock() - t;
-	printf("Execution time normalized : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time normalized : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// transpose matriks A
 	Atrans = (double**) malloc(M*sizeof(double*));
@@ -563,10 +707,10 @@ int main(int argc, char *argv[]) {
 		Atrans[x] = (double*) malloc(N*sizeof(double));
 		memset(Atrans[x],0,N*sizeof(double));
 	}
-	t = clock();
+	// t = clock();
 	transpose_matrixA();
-	t = clock() - t;
-	printf("Execution time transpose matrix A : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time transpose matrix A : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// matriks covarian [A * Atranspose]
 	// S -> M*M
@@ -586,11 +730,43 @@ int main(int argc, char *argv[]) {
 		memset(V[x],0,N*sizeof(double));
 	}
 	
-	t = clock();
 	// serial
+	printf("\n");
+	t = clock();
 	get_covariant_matrix();
 	t = clock() - t;
-	printf("Execution time get covariant matrix (Multiply the matriks A and its transpose) : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	printf("Execution time get covariant matrix : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+
+	t = clock();
+	get_covariant_matrix_tile_static(size, chunk_size);
+	t = clock() - t;
+	printf("Execution time get covariant matrix tile static : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+
+	t = clock();
+	get_covariant_matrix_tile_guided(size, chunk_size);
+	t = clock() - t;
+	printf("Execution time get covariant matrix tile guided : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+
+	t = clock();
+	get_covariant_matrix_tile_dynamic(size, chunk_size);
+	t = clock() - t;
+	printf("Execution time get covariant matrix tile dynamic : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+
+	t = clock();
+	get_covariant_matrix_task(size, chunk_size);
+	t = clock() - t;
+	printf("Execution time get covariant matrix task : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+
+	t = clock();
+	get_covariant_matrix_data_task(size, chunk_size);
+	t = clock() - t;
+	printf("Execution time get covariant matrix data task : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+
+	t = clock();
+	get_covariant_matrix_task_depend(size, chunk_size);
+	t = clock() - t;
+	printf("Execution time get covariant matrix task depend : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	printf("\n");
 	
 	t = clock();
 	calculate_eigenvalues();
@@ -605,10 +781,10 @@ int main(int argc, char *argv[]) {
 		memset(U[x],0,M*sizeof(double));
 	}
 	
-	t = clock();
+	// t = clock();
 	calculate_eigenfaces();
-	t = clock() - t;
-	printf("Execution time get eigenfaces : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time get eigenfaces : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// temukan bobot
 	W = (double**) malloc(Eigenfaces*sizeof(double*));
@@ -617,10 +793,10 @@ int main(int argc, char *argv[]) {
 		memset(W[x],0,N*sizeof(double));
 	}
 	
-	t = clock();
+	// t = clock();
 	calculate_weight();
-	t = clock() - t;
-	printf("Execution time get weight : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time get weight : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// menghitung akurasi
 	X = (double**) malloc(1*sizeof(double*));
@@ -629,12 +805,12 @@ int main(int argc, char *argv[]) {
 		memset(X[x],0,M*sizeof(double));
 	}
 	
-	t = clock();
+	// t = clock();
 	calculate_accuracy();
-	t = clock() - t;
-	printf("Execution time get accuracy : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
-	first = clock() - first;
-	printf("Total Execution time : %.2fms\n", (float)(first)/CLOCKS_PER_SEC*1000);
+	// t = clock() - t;
+	// printf("Execution time get accuracy : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// first = clock() - first;
+	// printf("Total Execution time : %.2fms\n", (float)(first)/CLOCKS_PER_SEC*1000);
 	
 	free(X);
 	free(A);
