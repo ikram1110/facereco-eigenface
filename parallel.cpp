@@ -12,10 +12,10 @@
 #define MIN(a,b) (((a)<(b))?(a):(b))
 const int Faces = 40;
 const int Samples = 9;
-const int Width = 92;
-const int Height = 112;
+const int Width = 493;
+const int Height = 600;
 const int Eigenfaces = 28;
-const std::string DataPath = "faces/";
+const std::string DataPath = "face600/";
 const int N = Faces;
 const int M = Width * Height;
 const std::string SampleName = "10";
@@ -24,14 +24,18 @@ double **facearray, **A, **B, **S, **V, **U, **W, **X, **P, **Atrans, **tempS;
 clock_t first, t, tsc;
 
 void read_training_data() {
+	int sample, countimg, valimg, avgX, avgY;
+	double avgSum;
+
 	facearray = (double**) malloc(Samples*sizeof(double*));
 	for(int x=0; x<Samples; x++) {
 		facearray[x] = (double*) malloc(M*sizeof(double));
 		memset(facearray[x],0,M*sizeof(double));
 	}
+	
 	for(int face=0; face<Faces; ++face) {
 		// perulangan setiap foto
-		for(int sample=0; sample<Samples; ++sample) {
+		for(sample=0; sample<Samples; ++sample) {
 			std::stringstream filename;
 			// filename << DataPath << "s" << face + 1 << "/" << sample  + 1 << ".pgm";
 			filename << DataPath << face + 1 << "_" << sample  + 1 << ".pgm";
@@ -46,11 +50,10 @@ void read_training_data() {
 				getline(image, line); // Skip height line
 				getline(image, line); // Skip max value line
 		
-				int val;
-				int x = 0;
-				while(image >> val) {
-					facearray[sample][x] = val;
-					x++;
+				countimg = 0;
+				while(image >> valimg) {
+					facearray[sample][countimg] = valimg;
+					countimg++;
 				}
 				
 				image.close();
@@ -60,12 +63,14 @@ void read_training_data() {
 		}
 
 		// mencari citra rata-rata
-		for(int x=0; x<M; ++x) {
-			double sum = 0;
-			for(int y=0; y<Samples; ++y) {
-				sum += facearray[y][x];
+		#pragma omp parallel for private(avgX,avgY,avgSum)\
+																shared(A)
+		for(avgX=0; avgX<M; ++avgX) {
+			avgSum = 0;
+			for(avgY=0; avgY<Samples; ++avgY) {
+				avgSum += facearray[avgY][avgX];
 			}
-			A[face][x] = sum/Samples;
+			A[face][avgX] = avgSum/Samples;
 		}
 	}
 	free(facearray);
@@ -74,10 +79,13 @@ void read_training_data() {
 void create_mean_image() {
 	// temukan mean image
 	tsc = clock();
-	#pragma omp parallel for schedule(dynamic)
-	for(int c=0; c<M; ++c) {
-		double sum = 0;
-		for(int r=0; r<N; ++r) {
+	int c,r;
+	double sum;
+	#pragma omp parallel for private(c,r,sum)\
+													 shared(B)
+	for(c=0; c<M; ++c) {
+		sum = 0;
+		for(r=0; r<N; ++r) {
 			sum += A[r][c];
 		}
 		B[0][c] = sum / N;
@@ -103,9 +111,11 @@ void create_mean_image() {
 void normalized() {
 	// kurangkan mean dari setiap gambar
 	tsc = clock();
-	#pragma omp parallel for schedule(dynamic)
-	for(int r=0; r<N; ++r) {
-		for(int c=0; c<M; ++c) {
+	int r,c;
+	#pragma omp parallel for private(r,c)\
+													 shared(A)
+	for(r=0; r<N; ++r) {
+		for(c=0; c<M; ++c) {
 			A[r][c] -= B[0][c];
 			if(A[r][c] < 0) {
 				A[r][c] = 0;
@@ -133,8 +143,11 @@ void normalized() {
 }
 
 void transpose_matrixA() {
-	for(int r=0; r<M; ++r) {
-		for(int c=0; c<N; ++c) {
+	int r,c;
+	#pragma omp parallel for private(r,c)\
+													 shared(Atrans)
+	for(r=0; r<M; ++r) {
+		for(c=0; c<N; ++c) {
 			Atrans[r][c] = A[c][r];
 		}
 	}
@@ -195,7 +208,8 @@ void get_covariant_matrix_tile_guided(int size, int chunk) {
 
 void get_covariant_matrix_tile_dynamic(int size, int chunk) {
 	int jj,kk,i,j,k,sum;
-	#pragma omp parallel for private(jj,kk,i,j,k,sum) schedule(dynamic, chunk)
+	#pragma omp parallel for private(jj,kk,i,j,k,sum) schedule(dynamic)\
+													 shared(S)
 	for (int ii = 0; ii<N; ii+=size) {
 		for (jj = 0; jj<N; jj+=size) {
 	    for(kk = 0; kk<M; kk+=size) {
@@ -436,18 +450,19 @@ void calculate_eigenfaces() {
 	}
 
 	for(int r=0; r<Eigenfaces; ++r) {
-		for(int c=0; c<M; ++c) {
+		int c,k;
+		for(c=0; c<M; ++c) {
 			eigenface[0][c] = 0;
 		}
 		for(int re=0; re<1; re++) {
-			for(int c=0; c<M; ++c) {
-				for(int k=0; k<N; ++k) {
+			for(c=0; c<M; ++c) {
+				for(k=0; k<N; ++k) {
 					eigenface[re][c] += V[r][k] * A[k][c];
 				}
 			}
 		}
 		
-		for(int c=0; c<M; ++c) {
+		for(c=0; c<M; ++c) {
 			U[r][c] = eigenface[0][c];
 		}
 		
@@ -464,22 +479,24 @@ void calculate_eigenfaces() {
 		
 		// eigenface <- scale(U[r])
 		// temukan minimum dan maksimum saat ini
-		for(int c=0; c<M; ++c) {
+		for(c=0; c<M; ++c) {
 			Urow[0][c] = U[r][c];
 		}
 		
 		double min = 0, max = 255;
 		double m_min = Urow[0][0];
 		double m_max = Urow[0][0];
-		for(int rs=0; rs<1; ++rs) {
-				for(int c=0; c<M; ++c) {
-						if(Urow[rs][c] < m_min) {
-								m_min = Urow[rs][c];
-						}
-						if(Urow[rs][c] > m_max) {
-								m_max = Urow[rs][c];
-						}
-				}
+		int rs;
+		
+		for(rs=0; rs<1; ++rs) {
+			for(c=0; c<M; ++c) {
+					if(Urow[rs][c] < m_min) {
+						m_min = Urow[rs][c];
+					}
+					if(Urow[rs][c] > m_max) {
+						m_max = Urow[rs][c];
+					}
+			}
 		}
 		
 		double old_range = m_max - m_min;
@@ -487,7 +504,7 @@ void calculate_eigenfaces() {
 		
 		// buat matriks baru dengan elemen berskala
 		for(int re=0; re<1; ++re) {
-			for(int c=0; c<M; ++c) {
+			for(c=0; c<M; ++c) {
 				eigenface[re][c] = (Urow[re][c] - m_min) * new_range / old_range + min;
 			}
 		}
@@ -498,7 +515,7 @@ void calculate_eigenfaces() {
 		// write pgm
 		std::ofstream image_file(filename.str().c_str());
 		image_file << "P2" << std::endl << Width << std::endl << Height << std::endl << MaxValue << std::endl;
-		for(int c=0; c<M; ++c) {
+		for(c=0; c<M; ++c) {
 			int val = eigenface[0][c];
 			if(val < 0) {
 				val = 0;
@@ -679,10 +696,10 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// baca data latih
-	// t = clock();
+	t = clock();
 	read_training_data();
-	// t = clock() - t;
-	// printf("Execution time read training data : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	t = clock() - t;
+	printf("Execution time read training data : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// B berisi citra rata-rata. B adalah matriks 1xM, [B] 0, j adalah nilai piksel ke-j dari citra rata-rata.
 	B = (double**) malloc(1*sizeof(double*));
@@ -707,10 +724,10 @@ int main(int argc, char *argv[]) {
 		Atrans[x] = (double*) malloc(N*sizeof(double));
 		memset(Atrans[x],0,N*sizeof(double));
 	}
-	// t = clock();
+	t = clock();
 	transpose_matrixA();
-	// t = clock() - t;
-	// printf("Execution time transpose matrix A : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	t = clock() - t;
+	printf("Execution time transpose matrix A : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// matriks covarian [A * Atranspose]
 	// S -> M*M
@@ -731,42 +748,42 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// serial
-	printf("\n");
-	t = clock();
-	get_covariant_matrix();
-	t = clock() - t;
-	printf("Execution time get covariant matrix : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// printf("\n");
+	// t = clock();
+	// get_covariant_matrix();
+	// t = clock() - t;
+	// printf("Execution time get covariant matrix : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 
-	t = clock();
-	get_covariant_matrix_tile_static(size, chunk_size);
-	t = clock() - t;
-	printf("Execution time get covariant matrix tile static : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock();
+	// get_covariant_matrix_tile_static(size, chunk_size);
+	// t = clock() - t;
+	// printf("Execution time get covariant matrix tile static : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 
-	t = clock();
-	get_covariant_matrix_tile_guided(size, chunk_size);
-	t = clock() - t;
-	printf("Execution time get covariant matrix tile guided : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock();
+	// get_covariant_matrix_tile_guided(size, chunk_size);
+	// t = clock() - t;
+	// printf("Execution time get covariant matrix tile guided : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 
-	t = clock();
-	get_covariant_matrix_tile_dynamic(size, chunk_size);
-	t = clock() - t;
-	printf("Execution time get covariant matrix tile dynamic : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock();
+	// get_covariant_matrix_tile_dynamic(size, chunk_size);
+	// t = clock() - t;
+	// printf("Execution time get covariant matrix tile dynamic : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 
 	t = clock();
 	get_covariant_matrix_task(size, chunk_size);
 	t = clock() - t;
 	printf("Execution time get covariant matrix task : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 
-	t = clock();
-	get_covariant_matrix_data_task(size, chunk_size);
-	t = clock() - t;
-	printf("Execution time get covariant matrix data task : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// t = clock();
+	// get_covariant_matrix_data_task(size, chunk_size);
+	// t = clock() - t;
+	// printf("Execution time get covariant matrix data task : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 
-	t = clock();
-	get_covariant_matrix_task_depend(size, chunk_size);
-	t = clock() - t;
-	printf("Execution time get covariant matrix task depend : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
-	printf("\n");
+	// t = clock();
+	// get_covariant_matrix_task_depend(size, chunk_size);
+	// t = clock() - t;
+	// printf("Execution time get covariant matrix task depend : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	// printf("\n");
 	
 	t = clock();
 	calculate_eigenvalues();
@@ -781,10 +798,10 @@ int main(int argc, char *argv[]) {
 		memset(U[x],0,M*sizeof(double));
 	}
 	
-	// t = clock();
+	t = clock();
 	calculate_eigenfaces();
-	// t = clock() - t;
-	// printf("Execution time get eigenfaces : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	t = clock() - t;
+	printf("Execution time get eigenfaces : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// temukan bobot
 	W = (double**) malloc(Eigenfaces*sizeof(double*));
@@ -793,10 +810,10 @@ int main(int argc, char *argv[]) {
 		memset(W[x],0,N*sizeof(double));
 	}
 	
-	// t = clock();
+	t = clock();
 	calculate_weight();
-	// t = clock() - t;
-	// printf("Execution time get weight : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	t = clock() - t;
+	printf("Execution time get weight : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	
 	// menghitung akurasi
 	X = (double**) malloc(1*sizeof(double*));
@@ -805,10 +822,10 @@ int main(int argc, char *argv[]) {
 		memset(X[x],0,M*sizeof(double));
 	}
 	
-	// t = clock();
+	t = clock();
 	calculate_accuracy();
-	// t = clock() - t;
-	// printf("Execution time get accuracy : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
+	t = clock() - t;
+	printf("Execution time get accuracy : %.2fms\n", (float)(t)/CLOCKS_PER_SEC*1000);
 	// first = clock() - first;
 	// printf("Total Execution time : %.2fms\n", (float)(first)/CLOCKS_PER_SEC*1000);
 	

@@ -138,12 +138,47 @@ void transpose_matrixA() {
 	}
 }
 
-void get_covariant_matrix() {
-	for(int r=0; r<N; ++r) {
-		for(int c=0; c<N; ++c) {
-			S[r][c] = 0;
-			for(int k=0; k<M; ++k) {
-				S[r][c] += A[r][k] * Atrans[k][c];
+void get_covariant_matrix_tiling(){
+	int sum;
+	int size = 4;
+	for (int ii = 0; ii<N; ii+=size) {
+		for (int jj = 0; jj<N; jj+=size) {
+	    for(int kk = 0; kk<M; kk+=size) {
+				for (int i = ii; i < MIN(ii+size,N); i++) {
+					for (int j = jj; j < MIN(jj+size,N); j++) {
+		  			sum = 0;
+						for (int k = kk; k < MIN(kk+size,M); k++) {
+							sum += A[i][k] * Atrans[k][j];
+						}
+		  			S[i][j]+= sum;
+					}
+				}
+			}
+		}
+	}
+}
+
+void get_covariant_matrix_tiling_bak() {
+	const int size = 20;
+	int tmp[size][size];
+	for(int r=0; r<N; r+=size) {
+		for(int c=0; c<N; c+=size) {
+			for(int rt=0; rt<size; rt++) {
+				for(int ct=0; ct<size; ct++) {
+					tmp[rt][ct] = 0;
+				}
+			}
+			for(int k=0; k<M; k++) {
+				for(int rt=0; rt<size; rt++) {
+					for(int ct=0; ct<size; ct++) {
+						tmp[rt][ct] += A[r+rt][k] * Atrans[k][c+ct];
+					}
+				}
+			}
+			for(int rt=0; rt<size; rt++) {
+				for(int ct=0; ct<size; ct++) {
+					S[r+rt][c+ct] = tmp[rt][ct];
+				}
 			}
 		}
 	}
@@ -294,22 +329,31 @@ void calculate_eigenfaces() {
 		memset(eigenface[x],0,M*sizeof(double));
 	}
 
-	for(int r=0; r<Eigenfaces; ++r) {
-		for(int c=0; c<M; ++c) {
-			eigenface[0][c] = 0;
-		}
-		for(int re=0; re<1; re++) {
-			for(int c=0; c<M; ++c) {
-				for(int k=0; k<N; ++k) {
-					eigenface[re][c] += V[r][k] * A[k][c];
+  int size = 14;
+  double tmp[size][size];
+  for(int r=0; r<Eigenfaces; r+=size) {
+		for(int c=0; c<M; c+=size) {
+			for(int rt=0; rt<size; rt++) {
+				for(int ct=0; ct<size; ct++) {
+					tmp[rt][ct] = 0;
+				}
+			}
+			for(int k=0; k<N; k++) {
+				for(int rt=0; rt<size; rt++) {
+					for(int ct=0; ct<size; ct++) {
+						tmp[rt][ct] += V[r+rt][k] * A[k][c+ct];
+					}
+				}
+			}
+			for(int rt=0; rt<size; rt++) {
+				for(int ct=0; ct<size; ct++) {
+					U[r+rt][c+ct] = tmp[rt][ct];
 				}
 			}
 		}
-		
-		for(int c=0; c<M; ++c) {
-			U[r][c] = eigenface[0][c];
-		}
-		
+	}
+
+	for(int r=0; r<Eigenfaces; ++r) {
 		double norm = 0;
 		for(int i=0; i<M; i++) {
 			norm += pow(U[r][i], 2);
@@ -330,26 +374,22 @@ void calculate_eigenfaces() {
 		double min = 0, max = 255;
 		double m_min = Urow[0][0];
 		double m_max = Urow[0][0];
-		for(int rs=0; rs<1; ++rs) {
-				for(int c=0; c<M; ++c) {
-						if(Urow[rs][c] < m_min) {
-								m_min = Urow[rs][c];
-						}
-						if(Urow[rs][c] > m_max) {
-								m_max = Urow[rs][c];
-						}
-				}
-		}
+    for(int c=0; c<M; ++c) {
+      if(Urow[0][c] < m_min) {
+        m_min = Urow[0][c];
+      }
+      if(Urow[0][c] > m_max) {
+        m_max = Urow[0][c];
+      }
+    }
 		
 		double old_range = m_max - m_min;
 		double new_range = max - min;
 		
 		// buat matriks baru dengan elemen berskala
-		for(int re=0; re<1; ++re) {
-			for(int c=0; c<M; ++c) {
-				eigenface[re][c] = (Urow[re][c] - m_min) * new_range / old_range + min;
-			}
-		}
+    for(int c=0; c<M; ++c) {
+      eigenface[0][c] = (Urow[0][c] - m_min) * new_range / old_range + min;
+    }
 		
 		std::ostringstream filename;
 		filename << "output/eigenfaces/" << r << ".pgm";
@@ -372,47 +412,29 @@ void calculate_eigenfaces() {
 }
 
 void calculate_weight() {
-	double **Arow, **ArowTrans;
-	Arow = (double**) malloc(1*sizeof(double*));
-	for(int x=0; x<1; x++) {
-		Arow[x] = (double*) malloc(M*sizeof(double));
-		memset(Arow[x],0,M*sizeof(double));
-	}
-	ArowTrans = (double**) malloc(M*sizeof(double*));
-	for(int x=0; x<M; x++) {
-		ArowTrans[x] = (double*) malloc(1*sizeof(double));
-		memset(ArowTrans[x],0,1*sizeof(double));
-	}
-
-	for(int re=0; re<Eigenfaces; ++re) {
-		for(int ce=0; ce<N; ++ce) {
-			double befW = 0;
-			for(int c=0; c<M; ++c) {
-				Arow[0][c] = A[ce][c];
-			}
-			
-			// A[ce] transpose
-			for(int r=0; r<M; ++r) {
-				for(int c=0; c<1; ++c) {
-					ArowTrans[r][c] = Arow[c][r];
+  int size = 14;
+  double tmp[size][size];
+  for(int r=0; r<Eigenfaces; r+=size) {
+		for(int c=0; c<N; c+=size) {
+			for(int rt=0; rt<size; rt++) {
+				for(int ct=0; ct<size; ct++) {
+					tmp[rt][ct] = 0;
 				}
 			}
-			
-			// befW = U[re] * A[ce] transpose
-			for(int r=0; r<1; r++) {
-				for(int c=0; c<1; ++c) {
-					for(int k=0; k<M; ++k) {
-						befW += U[re][k] * ArowTrans[k][c];
+			for(int k=0; k<M; k++) {
+				for(int rt=0; rt<size; rt++) {
+					for(int ct=0; ct<size; ct++) {
+						tmp[rt][ct] += U[r+rt][k] * Atrans[k][c+ct];
 					}
 				}
 			}
-			
-			W[re][ce] = befW;
+			for(int rt=0; rt<size; rt++) {
+				for(int ct=0; ct<size; ct++) {
+					W[r+rt][c+ct] = tmp[rt][ct];
+				}
+			}
 		}
 	}
-	
-	free(Arow);
-	free(ArowTrans);
 }
 
 void calculate_accuracy() {
@@ -542,7 +564,7 @@ int main(int argc, char *argv[]) {
 	
 	create_mean_image();
 	normalized();
-
+  
 	// transpose matriks A
 	Atrans = (double**) malloc(M*sizeof(double*));
 	for(int x=0; x<M; x++) {
@@ -573,8 +595,8 @@ int main(int argc, char *argv[]) {
 	}
 	
 	t = omp_get_wtime();
-	// serial
-	get_covariant_matrix();
+	// tiling
+	get_covariant_matrix_tiling_bak();
 	t = omp_get_wtime() - t;
 	printf("Execution time get covariant matrix : %.2fms\n", t*1000);
 	

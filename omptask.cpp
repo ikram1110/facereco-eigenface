@@ -60,9 +60,11 @@ void read_training_data() {
 		}
 
 		// mencari citra rata-rata
-		for(int x=0; x<M; ++x) {
-			double sum = 0;
-			for(int y=0; y<Samples; ++y) {
+    int x,y;
+    double sum;
+		for(x=0; x<M; ++x) {
+			sum = 0;
+			for(y=0; y<Samples; ++y) {
 				sum += facearray[y][x];
 			}
 			A[face][x] = sum/Samples;
@@ -138,12 +140,59 @@ void transpose_matrixA() {
 	}
 }
 
-void get_covariant_matrix() {
-	for(int r=0; r<N; ++r) {
-		for(int c=0; c<N; ++c) {
-			S[r][c] = 0;
-			for(int k=0; k<M; ++k) {
-				S[r][c] += A[r][k] * Atrans[k][c];
+void processTask(int xx, int yy, int zz, int size){
+	int sum;
+	for (int x = xx; x < MIN(xx+size,N); x++) {
+		for (int y = yy; y < MIN(yy+size,N); y++) {
+			sum = 0;
+			for (int z = zz; z < MIN(zz+size,M); z++) {
+				sum += A[x][z] * Atrans[z][y];
+			}
+			S[x][y]+= sum;
+		}
+	}
+}
+
+void get_covariant_matrix_tiling(){
+	int ii,jj,kk;
+	int size = 20;
+  #pragma omp parallel
+	{
+		#pragma omp single nowait
+		for (ii = 0; ii<N; ii+=size) {
+			for (jj = 0; jj<N; jj+=size) {
+				for(kk = 0; kk<M; kk+=size) {
+					#pragma omp task firstprivate(ii,jj,kk)
+					processTask(ii,jj,kk,size);
+				}
+			}
+		}
+	}
+}
+
+void get_covariant_matrix_tiling_bak() {
+	const int size = 20;
+  int c,rt,ct,k;
+	int tmp[size][size];
+  #pragma omp parallel for private(c,rt,ct,k,tmp) schedule(dynamic)
+	for(int r=0; r<N; r+=size) {
+		for(c=0; c<N; c+=size) {
+			for(rt=0; rt<size; rt++) {
+				for(ct=0; ct<size; ct++) {
+					tmp[rt][ct] = 0;
+				}
+			}
+			for(k=0; k<M; k++) {
+				for(rt=0; rt<size; rt++) {
+					for(ct=0; ct<size; ct++) {
+						tmp[rt][ct] += A[r+rt][k] * Atrans[k][c+ct];
+					}
+				}
+			}
+			for(rt=0; rt<size; rt++) {
+				for(ct=0; ct<size; ct++) {
+					S[r+rt][c+ct] = tmp[rt][ct];
+				}
 			}
 		}
 	}
@@ -281,6 +330,19 @@ void calculate_eigenvalues() {
 	}
 }
 
+void efaceTask(int xx, int yy, int zz, int size){
+	double sum;
+	for (int x = xx; x < MIN(xx+size,Eigenfaces); x++) {
+		for (int y = yy; y < MIN(yy+size,M); y++) {
+			sum = 0;
+			for (int z = zz; z < MIN(zz+size,N); z++) {
+				sum += V[x][z] * A[z][y];
+			}
+			U[x][y]+= sum;
+		}
+	}
+}
+
 void calculate_eigenfaces() {
 	double **Urow, **eigenface;
 	Urow = (double**) malloc(1*sizeof(double*));
@@ -294,22 +356,22 @@ void calculate_eigenfaces() {
 		memset(eigenface[x],0,M*sizeof(double));
 	}
 
-	for(int r=0; r<Eigenfaces; ++r) {
-		for(int c=0; c<M; ++c) {
-			eigenface[0][c] = 0;
-		}
-		for(int re=0; re<1; re++) {
-			for(int c=0; c<M; ++c) {
-				for(int k=0; k<N; ++k) {
-					eigenface[re][c] += V[r][k] * A[k][c];
+  int size = 14;
+  int ii,jj,kk;
+  #pragma omp parallel
+	{
+		#pragma omp single nowait
+		for (ii = 0; ii<Eigenfaces; ii+=size) {
+			for (jj = 0; jj<M; jj+=size) {
+				for(kk = 0; kk<N; kk+=size) {
+					#pragma omp task firstprivate(ii,jj,kk)
+					efaceTask(ii,jj,kk,size);
 				}
 			}
 		}
-		
-		for(int c=0; c<M; ++c) {
-			U[r][c] = eigenface[0][c];
-		}
-		
+	}
+
+	for(int r=0; r<Eigenfaces; ++r) {
 		double norm = 0;
 		for(int i=0; i<M; i++) {
 			norm += pow(U[r][i], 2);
@@ -330,26 +392,22 @@ void calculate_eigenfaces() {
 		double min = 0, max = 255;
 		double m_min = Urow[0][0];
 		double m_max = Urow[0][0];
-		for(int rs=0; rs<1; ++rs) {
-				for(int c=0; c<M; ++c) {
-						if(Urow[rs][c] < m_min) {
-								m_min = Urow[rs][c];
-						}
-						if(Urow[rs][c] > m_max) {
-								m_max = Urow[rs][c];
-						}
-				}
-		}
+    for(int c=0; c<M; ++c) {
+      if(Urow[0][c] < m_min) {
+        m_min = Urow[0][c];
+      }
+      if(Urow[0][c] > m_max) {
+        m_max = Urow[0][c];
+      }
+    }
 		
 		double old_range = m_max - m_min;
 		double new_range = max - min;
 		
 		// buat matriks baru dengan elemen berskala
-		for(int re=0; re<1; ++re) {
-			for(int c=0; c<M; ++c) {
-				eigenface[re][c] = (Urow[re][c] - m_min) * new_range / old_range + min;
-			}
-		}
+    for(int c=0; c<M; ++c) {
+      eigenface[0][c] = (Urow[0][c] - m_min) * new_range / old_range + min;
+    }
 		
 		std::ostringstream filename;
 		filename << "output/eigenfaces/" << r << ".pgm";
@@ -371,48 +429,34 @@ void calculate_eigenfaces() {
 	free(eigenface);
 }
 
-void calculate_weight() {
-	double **Arow, **ArowTrans;
-	Arow = (double**) malloc(1*sizeof(double*));
-	for(int x=0; x<1; x++) {
-		Arow[x] = (double*) malloc(M*sizeof(double));
-		memset(Arow[x],0,M*sizeof(double));
-	}
-	ArowTrans = (double**) malloc(M*sizeof(double*));
-	for(int x=0; x<M; x++) {
-		ArowTrans[x] = (double*) malloc(1*sizeof(double));
-		memset(ArowTrans[x],0,1*sizeof(double));
-	}
-
-	for(int re=0; re<Eigenfaces; ++re) {
-		for(int ce=0; ce<N; ++ce) {
-			double befW = 0;
-			for(int c=0; c<M; ++c) {
-				Arow[0][c] = A[ce][c];
+void taskWeight(int xx, int yy, int zz, int size){
+	double sum;
+	for (int x = xx; x < MIN(xx+size,Eigenfaces); x++) {
+		for (int y = yy; y < MIN(yy+size,N); y++) {
+			sum = 0;
+			for (int z = zz; z < MIN(zz+size,M); z++) {
+				sum += U[x][z] * Atrans[z][y];
 			}
-			
-			// A[ce] transpose
-			for(int r=0; r<M; ++r) {
-				for(int c=0; c<1; ++c) {
-					ArowTrans[r][c] = Arow[c][r];
-				}
-			}
-			
-			// befW = U[re] * A[ce] transpose
-			for(int r=0; r<1; r++) {
-				for(int c=0; c<1; ++c) {
-					for(int k=0; k<M; ++k) {
-						befW += U[re][k] * ArowTrans[k][c];
-					}
-				}
-			}
-			
-			W[re][ce] = befW;
+			W[x][y]+= sum;
 		}
 	}
-	
-	free(Arow);
-	free(ArowTrans);
+}
+
+void calculate_weight() {
+  int size = 14;
+  int ii,jj,kk;
+  #pragma omp parallel
+	{
+		#pragma omp single nowait
+		for (ii = 0; ii<Eigenfaces; ii+=size) {
+			for (jj = 0; jj<N; jj+=size) {
+				for(kk = 0; kk<M; kk+=size) {
+					#pragma omp task firstprivate(ii,jj,kk)
+					taskWeight(ii,jj,kk,size);
+				}
+			}
+		}
+	}
 }
 
 void calculate_accuracy() {
@@ -513,12 +557,15 @@ void calculate_accuracy() {
 }
 
 int main(int argc, char *argv[]) {
+  int thread = 2;
 	if(argc == 2){
-    Eigenfaces = atoi(argv[1]);
+    thread = atoi(argv[1]);
   }
 
 	srand(time(NULL));
 	first = omp_get_wtime();
+
+  omp_set_num_threads(thread);
 	
 	// A berisi gambar sebagai baris. A adalah NxM, [A] i, j adalah nilai piksel ke-j gambar ke-i.
 	A = (double**) malloc(N*sizeof(double*));
@@ -542,7 +589,7 @@ int main(int argc, char *argv[]) {
 	
 	create_mean_image();
 	normalized();
-
+  
 	// transpose matriks A
 	Atrans = (double**) malloc(M*sizeof(double*));
 	for(int x=0; x<M; x++) {
@@ -572,9 +619,9 @@ int main(int argc, char *argv[]) {
 		memset(V[x],0,N*sizeof(double));
 	}
 	
+	// tiling
 	t = omp_get_wtime();
-	// serial
-	get_covariant_matrix();
+	get_covariant_matrix_tiling();
 	t = omp_get_wtime() - t;
 	printf("Execution time get covariant matrix : %.2fms\n", t*1000);
 	
