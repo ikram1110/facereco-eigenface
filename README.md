@@ -9,13 +9,13 @@ Implementation of load imbalance in face recognition case studies with the eigen
 For serial program with commands
 
 ```bash
-$ g++ -Wall -std=c++11 main.cpp -o serial
+$ g++ -Wall -std=c++11 main.cpp -fopenmp -o serial
 ```
 
 And parallel program, use the OpenMP Library to compile the program with `-fopenmp` option
 
 ```bash
-$ g++ -Wall -std=c++11 parallel.cpp -fopenmp -o parallel
+$ g++ -Wall -std=c++11 ompmain.cpp -fopenmp -o parallel
 ```
 
 Then run it for serial program
@@ -30,16 +30,16 @@ for parallel program
 $ ./parallel
 ```
 
-and with schedule method with command
+and with number of threads option with command
 
 ```bash
-$ ./scheduleApp [numberOfThread]
+$ ./parallel [numberOfThread]
 ```
 
 like ...
 
 ```bash
-$ ./static 4
+$ ./parallel 4
 ```
 
 ## Usage

@@ -138,15 +138,6 @@ void transpose_matrixA() {
 	}
 }
 
-void covariance_task(int r){
-	for(int c=0; c<N; ++c) {
-		S[r][c] = 0;
-		for(int k=0; k<M; ++k) {
-			S[r][c] += A[r][k] * Atrans[k][c];
-		}
-	}
-}
-
 void get_covariant_matrix() {
 	int r;
 	#pragma omp parallel
@@ -154,7 +145,12 @@ void get_covariant_matrix() {
 		#pragma omp single nowait
 		for(r=0; r<N; ++r) {
 			#pragma omp task firstprivate(r)
-			covariance_task(r);
+			for(int c=0; c<N; ++c) {
+				S[r][c] = 0;
+				for(int k=0; k<M; ++k) {
+					S[r][c] += A[r][k] * Atrans[k][c];
+				}
+			}
 		}
 	}
 }
@@ -291,15 +287,6 @@ void calculate_eigenvalues() {
 	}
 }
 
-void eface_task(int r){
-	for(int c=0; c<M; ++c) {
-		U[r][c] = 0;
-		for(int k=0; k<N; ++k) {
-			U[r][c] += V[r][k] * A[k][c];
-		}
-	}
-}
-
 void calculate_eigenfaces() {
 	double **Urow, **eigenface;
 	Urow = (double**) malloc(1*sizeof(double*));
@@ -319,7 +306,12 @@ void calculate_eigenfaces() {
 		#pragma omp single nowait
 		for(r=0; r<Eigenfaces; ++r) {
 			#pragma omp task firstprivate(r)
-			eface_task(r);
+			for(int c=0; c<M; ++c) {
+				U[r][c] = 0;
+				for(int k=0; k<N; ++k) {
+					U[r][c] += V[r][k] * A[k][c];
+				}
+			}
 		}
 	}
 
@@ -385,15 +377,6 @@ void calculate_eigenfaces() {
 	free(eigenface);
 }
 
-void weight_task(int r){
-	for(int c=0; c<N; ++c) {
-		W[r][c] = 0;
-		for(int k=0; k<M; ++k) {
-			W[r][c] += U[r][k] * Atrans[k][c];
-		}
-	}
-}
-
 void calculate_weight() {
 	int r;
 	#pragma omp parallel
@@ -401,7 +384,12 @@ void calculate_weight() {
 		#pragma omp single nowait
 		for(r=0; r<Eigenfaces; ++r) {
 			#pragma omp task firstprivate(r)
-			weight_task(r);
+			for(int c=0; c<N; ++c) {
+				W[r][c] = 0;
+				for(int k=0; k<M; ++k) {
+					W[r][c] += U[r][k] * Atrans[k][c];
+				}
+			}
 		}
 	}
 }
